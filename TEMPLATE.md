@@ -106,11 +106,11 @@ policyholder's sum assured (liability).
 | `telematics.score_max` / `.score_min` / `.score_span` | score | `score = clip(score_max − blend × score_span, score_min, score_max)` (higher = safer). |
 | `behavior_risk.lo` / `.hi` | multiplier | Rank-mapped latent risk range; safest driver gets `lo`, riskiest `hi`. |
 
-The observable telematics columns are **EV-only** (ICE rows are `NaN`):
-`telematics_hard_braking`, `telematics_speeding`, `telematics_night_share`
-(clipped raw draws), `telematics_blend` (weighted min-max blend),
-`telematics_score` and `telematics_rank_pct`. The latent `BEHAVIOR_RISK` is
-drawn for every vehicle and still drives frequency + retention.
+The raw telematics columns are drawn for **every vehicle**
+(`telematics_hard_braking`, `telematics_speeding`, `telematics_night_share`,
+`telematics_blend`, `telematics_rank_pct`); the composite `telematics_score`
+is **EV-only** (ICE rows are `NaN`). The latent `BEHAVIOR_RISK` is drawn for
+every vehicle and still drives frequency + retention.
 
 ## Retention
 

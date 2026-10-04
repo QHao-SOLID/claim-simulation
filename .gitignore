@@ -7,3 +7,6 @@ __pycache__/
 
 # Generated simulation artifacts (regenerate with run_scenarios.py)
 results/
+
+# Generated competition workbooks (regenerate with competition.build_round)
+competition/rounds/

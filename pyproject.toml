@@ -1,0 +1,25 @@
+[project]
+name = "voltvision"
+version = "0.3.0"
+description = "Premium-independent Malaysian motor insurance simulation engine + Excel pricing competition factory"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["voltvision", "competition"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,17 @@
+[
+ {"name": "base", "label": "Base world — no stress", "patch": {}},
+ {"name": "freq_p10", "label": "Frequency stress +10%", "patch": {"frequency_intensity": 1.10}},
+ {"name": "freq_p15", "label": "Frequency stress +15%", "patch": {"frequency_intensity": 1.15}},
+ {"name": "freq_p20", "label": "Frequency stress +20%", "patch": {"frequency_intensity": 1.20}},
+ {"name": "freq_p25", "label": "Frequency stress +25%", "patch": {"frequency_intensity": 1.25}},
+ {"name": "combo_hard", "label": "Hard combo — high frequency + severity", "patch": {"claim_frequency_base": -1.70, "severity_multiplier": 1.15}},
+ {"name": "coverage_shift", "label": "Coverage shift toward TPO", "patch": {"coverage_ramp": {"to": {"Comprehensive": 0.45, "TPFT": 0.20, "TPO": 0.35}}}},
+ {"name": "ev_ramp_heavy", "label": "Heavy EV adoption ramp", "patch": {"vehicle_ramp": {"to": {"ICE": 0.40, "EV": 0.60}}}},
+ {"name": "tpo_tsunami", "label": "TPO-heavy book", "patch": {"coverage_ramp": {"to": {"Comprehensive": 0.20, "TPFT": 0.20, "TPO": 0.60}}}},
+ {"name": "senior_skew", "label": "Senior-skewed drivers", "patch": {"generation_pct": {"Young Adults": 0.05, "Adults": 0.20, "Mature Adults": 0.25, "Seniors": 0.50}}},
+ {"name": "young_male_skew", "label": "Young male-skewed drivers", "patch": {"generation_pct": {"Young Adults": 0.70, "Adults": 0.15, "Mature Adults": 0.10, "Seniors": 0.05}, "gender_pct": {"Male": 0.75, "Female": 0.25}}},
+ {"name": "flood_heavy", "label": "Flood-prone years", "patch": {"flood_event_prob": {"Peninsular Malaysia": 0.80, "East Malaysia (Sabah, Sawarak & Labuan)": 0.80}}},
+ {"name": "theft_heavy", "label": "High theft exposure", "patch": {"risk_flags": {"theft": {"Peninsular Malaysia": 0.90, "East Malaysia (Sabah, Sawarak & Labuan)": 1.00}}}},
+ {"name": "severity_shock", "label": "Severity shock +50%", "patch": {"severity_multiplier": 1.50}},
+ {"name": "high_inflation", "label": "High claim inflation", "patch": {"severity_inflation": 0.25}}
+]

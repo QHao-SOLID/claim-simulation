@@ -20,6 +20,7 @@ Contract:
 import numpy as np
 import pandas as pd
 
+from .assumptions import deep_merge
 from .schema import CLAIM_COLS, COLS
 
 
@@ -195,8 +196,8 @@ def _draw_telematics(df, cfg, rng, n):
     Behavior risk: rank-map the score onto [lo, hi] so the worst driver always
     gets `hi` and the shape stays uniform whatever the raw gammas do.
 
-    All raw signals are kept in the output (clipped draws, blend, rank); the
-    device columns are withheld from ICE rows further down.
+    All raw signals are kept in the output (clipped draws, blend, rank) for
+    every vehicle; only the composite `telematics_score` is withheld from ICE.
     """
     tel = cfg['telematics']
     hb = tel['hard_braking']
@@ -223,13 +224,10 @@ def _draw_telematics(df, cfg, rng, n):
     rank_pct = np.argsort(np.argsort(df['telematics_score'].values)) / (max(n - 1, 1))
     df['telematics_rank_pct'] = rank_pct
     df['BEHAVIOR_RISK'] = br['hi'] - (br['hi'] - br['lo']) * rank_pct
-    # Telematics device data only exists for EVs (can't instrument ICE). The
-    # latent BEHAVIOR_RISK above stays for every vehicle; every observable
-    # device signal (raw, blend, score, rank) is withheld from ICE rows.
-    device_cols = ['telematics_hard_braking', 'telematics_speeding',
-                   'telematics_night_share', 'telematics_blend',
-                   'telematics_score', 'telematics_rank_pct']
-    df.loc[df['VEHICLE_TYPE'].values != 'EV', device_cols] = np.nan
+    # ICE carries the raw driving behaviour (signals, blend, rank) but not the
+    # composite device score: only `telematics_score` is withheld from non-EV
+    # rows. The latent BEHAVIOR_RISK above stays for every vehicle.
+    df.loc[df['VEHICLE_TYPE'].values != 'EV', 'telematics_score'] = np.nan
 
 
 def _make_policy_ids(df, year, prefix, n):
@@ -606,3 +604,83 @@ def simulate_book(cfg, vehicle, seed, n_years=None, return_claims=False):
                         coverage_mix=coverage_mix_at(cfg, cfg['cohort_year'])),
                     cfg, vehicle, seed=seed, n_years=years, verbose=False,
                     return_claims=return_claims)
+
+
+# ---------------------------------------------------------------------------
+# Public panel API: a fixed customer panel + per-seed claim replays.
+#
+# Used by the competition application (and any consumer) that needs ONE set of
+# customers and MULTIPLE claim worlds for the same customers — so seeded claim
+# randomness is pooled without the customer mix changing. The engine couples
+# attributes and claims in one RNG stream, so these helpers:
+#   1. build the panel once with retention pinned (every customer stays all
+#      years; attributes age exactly as the engine ages them);
+#   2. replay only the claim machinery per seed on that fixed panel, reusing
+#      the engine's own claim functions so the claim process is identical.
+# Attributes (including telematics) are claim-independent and come from the
+# panel; NCD state is recomputed inside each replay because it depends on that
+# replay's own claim history.
+# ---------------------------------------------------------------------------
+
+# Claim-independent columns carried by the panel (NCD comes from the replay).
+PANEL_COLS = ['POLID', 'SIM_YEAR', 'COHORT_YEAR', 'COVERAGE_TYPE', 'SUM_ASSURED',
+              'REGION', 'VEHICLE_TYPE', 'ENGINE_CAPACITY',
+              'DRIVER_AGE_CAT', 'DRIVER_AGE', 'CAR_AGE', 'DRIVER_GENDER',
+              'FLOOD_RISK', 'THEFT_RISK', 'NCD_YEARS', 'BEHAVIOR_RISK',
+              'telematics_hard_braking', 'telematics_speeding',
+              'telematics_night_share', 'telematics_blend', 'telematics_score',
+              'telematics_rank_pct']
+
+
+def build_panel(cfg, panel_seed, n_years):
+    """Simulate the whole market once with retention pinned to 100%.
+
+    Returns one row per policy-year for every customer (initial cohort +
+    entrants), attributes only. Claim columns are ignored by callers and
+    recomputed per scoring seed in `replay_claims`.
+    """
+    pinned = deep_merge(cfg, {'retention': {'clip': [1.0, 1.0]}})
+    book = simulate_book(pinned, pinned['vehicle_ramp']['from'], panel_seed,
+                         n_years=n_years)
+    return book[PANEL_COLS].copy()
+
+
+def replay_claims(panel, cfg, seed):
+    """Replay the claim process for one seed on the fixed panel.
+
+    Returns `(book, claims)`:
+      book    panel attributes + that seed's claim outcomes, NCD state and
+              flood marker per policy-year;
+      claims  one row per claim, columns = schema.CLAIM_COLS.
+    """
+    years = sorted(int(y) for y in panel['SIM_YEAR'].unique())
+    rng = np.random.default_rng(seed)
+    flood_events = _draw_flood_events(cfg, years, rng)
+
+    # Starting NCD years are an attribute draw (cohort year row).
+    first = panel.loc[panel['SIM_YEAR'] == years[0], ['POLID', 'NCD_YEARS']]
+    state = first.set_index('POLID')['NCD_YEARS']
+    ncd_table = cfg['ncd_table']
+
+    policy_frames = []
+    claim_frames = []
+    for year in years:
+        frame = panel[panel['SIM_YEAR'] == year].copy()
+        frame['NCD_YEARS'] = frame['POLID'].map(state).fillna(0).astype(int)
+        frame['NCD_LEVEL'] = frame['NCD_YEARS'].map(lambda y: ncd_table[min(int(y), 5)])
+        frame['SIM_YEAR'] = year
+        frame['FLOOD_EVENT_YEAR'] = frame['REGION'].map(flood_events[year]).astype(bool)
+
+        _add_frequency(frame, cfg, rng)
+        claims = _add_severity(frame, cfg, rng)
+        _update_ncd(frame, cfg)
+
+        state = frame.set_index('POLID')['NCD_YEARS']
+        policy_frames.append(frame)
+        if len(claims):
+            claim_frames.append(claims)
+
+    book = pd.concat(policy_frames, ignore_index=True)
+    claims = (pd.concat(claim_frames, ignore_index=True) if claim_frames
+              else pd.DataFrame(columns=CLAIM_COLS))
+    return book, claims

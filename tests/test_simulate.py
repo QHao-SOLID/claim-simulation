@@ -10,7 +10,7 @@ from conftest import FROZEN_TEMPLATE
 # Pinned reproducibility reference (frozen fixture, n=200, 2 years, seed
 # 20260916). Update only when simulate.py changes intentionally.
 PINNED_ROWS = 400
-PINNED_HASH = 11932143242030860547
+PINNED_HASH = 7334225933263375421
 
 
 def make_cfg():
@@ -33,6 +33,19 @@ def test_flood_event_year_is_boolean():
     cfg = make_cfg()
     book = simulate_book(cfg, cfg['vehicle_ramp']['from'], 20260916, n_years=2)
     assert book['FLOOD_EVENT_YEAR'].dtype == bool
+
+
+def test_ice_has_raw_telematics_but_no_score():
+    cfg = make_cfg()
+    book = simulate_book(cfg, cfg['vehicle_ramp']['from'], 20260916, n_years=2)
+    raw = ['telematics_hard_braking', 'telematics_speeding',
+           'telematics_night_share', 'telematics_blend', 'telematics_rank_pct']
+    ice = book[book['VEHICLE_TYPE'] == 'ICE']
+    ev = book[book['VEHICLE_TYPE'] == 'EV']
+    assert ice[raw].notna().all().all()
+    assert ice['telematics_score'].isna().all()
+    assert ev[raw + ['telematics_score']].notna().all().all()
+    assert ice['BEHAVIOR_RISK'].notna().all()
 
 
 def test_claims_frame_and_settlement_invariants():

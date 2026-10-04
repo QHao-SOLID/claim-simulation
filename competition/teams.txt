@@ -1,0 +1,7 @@
+# Competition teams — one name per line (blank lines and #-comments ignored).
+# Add, remove or rename freely; then rebuild the master workbook:
+#   python -m competition.make_master
+# (or `python -m competition.build_dataset` for a full regeneration).
+Team A
+Team B
+Team C
