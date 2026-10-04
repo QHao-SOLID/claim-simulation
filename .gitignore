@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated simulation artifacts (regenerate with run_scenarios.py)
+results/
