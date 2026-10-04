@@ -18,7 +18,7 @@ are ever produced.
 | `seed` | int | Simulation RNG seed. Overridable per scenario (`"seed": 7`) and by `seeds.json`. |
 | `vehicle_ramp` | `{"from": share dict, "to": share dict?}` | Base fleet mix plus optional drift. `from` is the whole-book mix (inception + entrants); `to` (optional) interpolates entrant shares linearly `from` → `to` across the window (`cohort_year` … `cohort_year + n_years − 1`). Entrants only — existing policies keep their fuel. Order (ICE, EV) is part of the RNG draw — keep it. |
 | `coverage_ramp` | `{"from": share dict, "to": share dict?}` | Same linear ramp for the coverage mix: `from` is the whole-book mix, `to` optional (absent = static book). Entrants only — existing policies keep their coverage. |
-| `flood_event_prob` | P(event year) per region | A flood loading only applies in years a region draws a flood event; the `FLOOD_RISK` flag marks exposure. |
+| `flood_event_prob` | P(event year) per region | A flood loading only applies in years a region draws a flood event; the `FLOOD_RISK` flag marks exposure and the output column `FLOOD_EVENT_YEAR` records the event year per policy. |
 | `severity_inflation` | fraction/yr | Claim payouts compound by `(1+r)^(SIM_YEAR − cohort_year)` (repair/medical inflation). |
 | `entrant_growth` | fraction/yr | New-business volume compounds per year: `n × entrant_frac × (1+g)^t`. |
 | `sa_depreciation` | fraction/yr | Sum assured marked down at renewal (market value), lowering total-loss payouts with age. |
@@ -89,6 +89,12 @@ are ever produced.
 | `peril_dist` | shares per coverage | Peril mix used when drawing a claim's peril; keys must equal `severity.perils`. |
 | `severity_multiplier` | multiplier | Global claim-cost shock on every peril (1.20 = +20%). |
 
+Settlement of own-damage perils (AD/Fire/Theft) caps the payout at
+`max(SUM_ASSURED − excess, 0)`: partials are inflated and excess-subtracted,
+then capped; Theft always settles as a total loss at that limit. Third-party
+(TPPD/TPBI) and Windscreen claims keep their own `cap`, so they may exceed the
+policyholder's sum assured (liability).
+
 ## Telematics generator
 
 | Key | Unit | Meaning |
@@ -136,5 +142,7 @@ Everything else patches the template keys above (deep merge for nested dicts).
 
 `seeds.json` — `{"seeds": [0, 1, 2]}`. Every scenario runs once per seed unless
 it patches `seed`. Result files are always seed-suffixed:
-`results/<scenario>_s<seed>.csv`, with exactly the schema columns (simulation
-data: attributes + claims; never premium).
+`results/<scenario>_s<seed>.csv` (policy-years, columns = schema.COLS) and
+`results/<scenario>_s<seed>_claims.csv` (one row per claim, columns =
+schema.CLAIM_COLS), with a `results/manifest.json` provenance entry per run.
+Simulation data only — never premium.

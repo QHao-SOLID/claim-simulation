@@ -20,7 +20,7 @@ Contract:
 import numpy as np
 import pandas as pd
 
-from .schema import COLS
+from .schema import CLAIM_COLS, COLS
 
 
 def normalize_weights(weights):
@@ -275,10 +275,11 @@ def claim_lambda(df, cfg):
     freq = cfg['frequency']
     cat = df['DRIVER_AGE_CAT'].values
     # Flood is an EVENT: the flag marks exposure, but the loading only bites
-    # in river-basin flood years (`_FLOOD_YEAR` per row, drawn per region-year).
+    # in river-basin flood years (`FLOOD_EVENT_YEAR` per row, drawn per
+    # region-year).
     flood_hit = df['FLOOD_RISK'].values
-    if '_FLOOD_YEAR' in df.columns:
-        flood_hit = flood_hit * df['_FLOOD_YEAR'].values
+    if 'FLOOD_EVENT_YEAR' in df.columns:
+        flood_hit = flood_hit * df['FLOOD_EVENT_YEAR'].values
     # Expression grouping mirrors the legacy code (sums are added as groups)
     # so float rounding — and therefore every historic result — is preserved.
     log_rate = (np.full(len(df), cfg['claim_frequency_base'])
@@ -348,13 +349,22 @@ def settle_claims(claim_amounts, perils, sum_assured, young, cfg, rng, year):
       Theft  -> always a total loss: payout = sum assured - excess
       Fire   -> mixed: total loss with prob `total_loss_prob`, else partial - excess
       AD     -> mixed: same shape; Young Adults carry `young_excess`
-    Partial payouts are inflated to the claim year, then excess-subtracted
-    (a partial claim at or below the excess is not reported: payout 0);
-    total-loss payouts use the (renewal-depreciated) sum assured.
+    Partial payouts are inflated to the claim year, excess-subtracted, then
+    capped at `max(SA - excess, 0)` (the policy limit); a partial claim at or
+    below the excess is not reported (payout 0). Total-loss payouts use the
+    (renewal-depreciated) sum assured.
+
+    Returns `(payouts, detail)` where `detail` carries the per-claim
+    settlement breakdown (total-loss flag, excess applied, inflation factor)
+    used for the claim-level CSV.
     """
     specs = cfg['severity']['specs']
     inflation = (1.0 + cfg.get('severity_inflation', 0.0)) ** (int(year) - int(cfg['cohort_year']))
     out = claim_amounts.copy()
+    n = len(claim_amounts)
+    total_loss = np.zeros(n, dtype=bool)
+    excess_applied = np.zeros(n)
+    inflation_applied = np.ones(n)
     for peril in ('AD', 'Fire', 'Theft'):
         spec = specs.get(peril)
         if not spec:
@@ -364,15 +374,25 @@ def settle_claims(claim_amounts, perils, sum_assured, young, cfg, rng, year):
             continue
         sa = sum_assured[mask]
         excess = np.where(young[mask], spec.get('young_excess', spec['excess']), spec['excess'])
+        policy_limit = np.maximum(sa - excess, 0.0)
+        excess_applied[mask] = excess
         payout = spec['payout']
         if payout == 'total':
-            out[mask] = np.maximum(sa - excess, 0.0)
+            total_loss[mask] = True
+            out[mask] = policy_limit
         else:
             total = rng.random(int(mask.sum())) < spec['total_loss_prob']
             partial = np.maximum(out[mask] * inflation - excess, 0.0)
-            total_pay = np.maximum(sa - excess, 0.0)
-            out[mask] = np.where(total, total_pay, partial)
-    return out
+            partial = np.minimum(partial, policy_limit)
+            out[mask] = np.where(total, policy_limit, partial)
+            total_loss[mask] = total
+            inflation_applied[mask] = np.where(total, 1.0, inflation)
+    detail = {
+        'TOTAL_LOSS': total_loss,
+        'EXCESS_APPLIED': excess_applied,
+        'INFLATION_FACTOR': inflation_applied,
+    }
+    return out, detail
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +439,8 @@ def _add_severity(book, cfg, rng):
       - one uniform vector draws all perils (see draw_perils),
       - one gamma call draws all amounts,
       - np.add.at regroups claim amounts in index order.
+    Returns one row per claim (raw draw → settlement breakdown) for the
+    claim-level CSV; empty frame when the year has no claims.
     """
     amount = np.zeros(len(book))
     peril_string = np.full(len(book), '', dtype=object)
@@ -427,7 +449,7 @@ def _add_severity(book, cfg, rng):
     if not claimed.any():
         book['CLAIM_AMOUNT'] = amount
         book['CLAIM_PERIL'] = peril_string
-        return
+        return pd.DataFrame(columns=CLAIM_COLS)
 
     # One row per claim: repeat the claimant's index by its claim count.
     claim_index = np.repeat(np.flatnonzero(claimed), counts[claimed])
@@ -436,10 +458,11 @@ def _add_severity(book, cfg, rng):
     perils = draw_perils(coverage, len(claim_index), rng, cfg)
 
     shape, scale, cap = severity_params(perils, sum_assured, cfg)
-    claim_amounts = np.minimum(rng.gamma(shape, scale), cap)
+    raw_amounts = rng.gamma(shape, scale)
+    claim_amounts = np.minimum(raw_amounts, cap)
     young = book['DRIVER_AGE_CAT'].values[claim_index] == 'Young Adults'
-    claim_amounts = settle_claims(claim_amounts, perils, sum_assured, young, cfg, rng,
-                                  book['SIM_YEAR'].iloc[0])
+    claim_amounts, detail = settle_claims(claim_amounts, perils, sum_assured, young,
+                                          cfg, rng, book['SIM_YEAR'].iloc[0])
     np.add.at(amount, claim_index, claim_amounts)
 
     # One peril string per policy; multiple claims joined by '/'.
@@ -448,6 +471,24 @@ def _add_severity(book, cfg, rng):
 
     book['CLAIM_AMOUNT'] = amount
     book['CLAIM_PERIL'] = peril_string
+
+    claims = pd.DataFrame({
+        'POLID': book['POLID'].values[claim_index],
+        'SIM_YEAR': book['SIM_YEAR'].values[claim_index],
+        'COHORT_YEAR': book['COHORT_YEAR'].values[claim_index],
+        'COVERAGE_TYPE': coverage,
+        'VEHICLE_TYPE': book['VEHICLE_TYPE'].values[claim_index],
+        'DRIVER_AGE_CAT': book['DRIVER_AGE_CAT'].values[claim_index],
+        'CLAIM_PERIL': perils,
+        'SUM_ASSURED': sum_assured,
+        'RAW_GAMMA': raw_amounts,
+        'CAP': cap,
+        'TOTAL_LOSS': detail['TOTAL_LOSS'],
+        'EXCESS_APPLIED': detail['EXCESS_APPLIED'],
+        'INFLATION_FACTOR': detail['INFLATION_FACTOR'],
+        'SETTLED_PAYOUT': claim_amounts,
+    })
+    return claims[CLAIM_COLS]
 
 
 def _add_retention(book, cfg, rng):
@@ -507,28 +548,34 @@ def _draw_flood_events(cfg, years, rng):
 # Main loop.
 # ---------------------------------------------------------------------------
 
-def simulate(df0, cfg, vehicle_pct, seed, n_years=None, verbose=True):
+def simulate(df0, cfg, vehicle_pct, seed, n_years=None, verbose=True,
+             return_claims=False):
     """Evolve a book across n_years: age → frequency → severity → retention →
     NCD → (survivors + entrants) → repeat.
 
     Returns the full history, one row per policy-year, columns = schema.COLS
     (including lapsers, so retention stays measurable). Never premium.
+    With `return_claims=True` returns `(book, claims)`: the policy-year frame
+    plus one row per claim (columns = schema.CLAIM_COLS).
     """
     n_years = int(n_years or cfg['n_years'])
     rng = np.random.default_rng(seed)
     active = df0.copy()
     history = []
+    claim_frames = []
     years = [cfg['cohort_year'] + offset for offset in range(n_years)]
     flood_events = _draw_flood_events(cfg, years, rng)
     for offset in range(n_years):
         year = cfg['cohort_year'] + offset
         active['SIM_YEAR'] = year
         # Event marker for this year; consumed by claim_lambda's flood term.
-        active['_FLOOD_YEAR'] = active['REGION'].map(flood_events[year]).astype(bool)
+        active['FLOOD_EVENT_YEAR'] = active['REGION'].map(flood_events[year]).astype(bool)
 
         _age_inforce(active, year, cfg)
         _add_frequency(active, cfg, rng)
-        _add_severity(active, cfg, rng)
+        claims = _add_severity(active, cfg, rng)
+        if return_claims and len(claims):
+            claim_frames.append(claims)
         _add_retention(active, cfg, rng)
         _update_ncd(active, cfg)
 
@@ -540,16 +587,22 @@ def simulate(df0, cfg, vehicle_pct, seed, n_years=None, verbose=True):
         if offset < n_years - 1:
             active = _add_entrants(active, cfg, vehicle_pct, seed, year + 1, n_years)
 
-    return pd.concat(history, ignore_index=True)
+    book = pd.concat(history, ignore_index=True)
+    if not return_claims:
+        return book
+    all_claims = (pd.concat(claim_frames, ignore_index=True) if claim_frames
+                  else pd.DataFrame(columns=CLAIM_COLS))
+    return book, all_claims
 
 
 # ---------------------------------------------------------------------------
 # Convenience wrapper for callers that need a complete book.
 # ---------------------------------------------------------------------------
 
-def simulate_book(cfg, vehicle, seed, n_years=None):
+def simulate_book(cfg, vehicle, seed, n_years=None, return_claims=False):
     """Simulate a full book in one call (gen + simulate)."""
     years = int(n_years or cfg['n_years'])
     return simulate(gen(cfg, vehicle, seed,
                         coverage_mix=coverage_mix_at(cfg, cfg['cohort_year'])),
-                    cfg, vehicle, seed=seed, n_years=years, verbose=False)
+                    cfg, vehicle, seed=seed, n_years=years, verbose=False,
+                    return_claims=return_claims)

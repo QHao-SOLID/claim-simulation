@@ -1,10 +1,15 @@
-"""The loop: for each scenario × seed → simulate → save one CSV.
+"""The loop: for each scenario × seed → simulate → save one CSV per table.
 
-Output: results/<scenario>_s<seed>.csv with exactly schema.COLS columns —
-simulation attributes and claims, never premium. The engine is
-premium-independent: same seed + same cfg = identical file.
+Output (all in `out`, default results/):
+  <scenario>_s<seed>.csv         policy-year rows, columns = schema.COLS
+  <scenario>_s<seed>_claims.csv  one row per claim, columns = schema.CLAIM_COLS
+  manifest.json                  provenance: files, run facts, cfg + SHA-256
+
+Simulation data only — never premium. The engine is premium-independent:
+same seed + same cfg = identical files.
 """
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -57,22 +62,22 @@ def resolve_vehicle(vehicle, cfg):
     return normalize_mix(vehicle)
 
 
-def _summary(book, vehicle, path):
+def _summary(book, claims, vehicle, policy_path):
     """One line of run facts (all simulation-side, no premium)."""
     return {
         'policies': int(book['POLID'].nunique()),
         'rows': len(book),
-        'claims': int(book['CLAIM_COUNT'].sum()),
+        'claims': len(claims),
         'claim_amount': round(float(book['CLAIM_AMOUNT'].sum()), 2),
         'freq': round(float(book['CLAIM_OCCURRED'].mean()), 4),
         'vehicle': vehicle,
-        'file': Path(path).name,
+        'file': Path(policy_path).name,
     }
 
 
 def run_scenarios(grid='scenarios', template=None, scenario_names=None,
                   seeds=None, quick=False, out=None, verbose=True):
-    """Execute scenario groups and write one CSV per (scenario, seed).
+    """Execute scenario groups and write CSVs + manifest per (scenario, seed).
 
     grid            directory of scenario JSON files (or one file)
     template        base assumptions dict (default: base_template.json)
@@ -105,6 +110,8 @@ def run_scenarios(grid='scenarios', template=None, scenario_names=None,
             cfg = build_cfg(base, scenario)
             vehicle = resolve_vehicle(scenario.get('vehicle'), cfg)
             scenario_seeds = [scenario['seed']] if 'seed' in scenario else seed_list
+            cfg_sha256 = hashlib.sha256(
+                json.dumps(cfg, sort_keys=True, default=str).encode('utf-8')).hexdigest()
 
             if verbose:
                 print(f"\n=== {group} / {name} | vehicle={vehicle} "
@@ -114,15 +121,32 @@ def run_scenarios(grid='scenarios', template=None, scenario_names=None,
 
             for seed in scenario_seeds:
                 started = time.time()
-                book = simulate_book(cfg, vehicle, seed, n_years=cfg['n_years'])
-                path = io.save_csv(name, seed, book, out=out)
-                summary = _summary(book, vehicle, path)
+                book, claims = simulate_book(cfg, vehicle, seed,
+                                             n_years=cfg['n_years'],
+                                             return_claims=True)
+                policy_path = io.save_csv(name, seed, book, out=out)
+                claims_path = io.save_claims_csv(name, seed, claims, out=out)
+                summary = _summary(book, claims, vehicle, policy_path)
                 rows.append({'scenario': name, 'seed': seed, **summary})
+                io.update_manifest(io.result_stem(name, seed), {
+                    'scenario': name,
+                    'seed': int(seed),
+                    'files': [policy_path.name, claims_path.name],
+                    'rows': summary['rows'],
+                    'policies': summary['policies'],
+                    'claims': summary['claims'],
+                    'claim_amount': summary['claim_amount'],
+                    'freq': summary['freq'],
+                    'vehicle': vehicle,
+                    'cfg_sha256': cfg_sha256,
+                    'cfg': cfg,
+                }, out=out)
                 if verbose:
                     print(f"    seed {seed} | rows {summary['rows']} "
                           f"| claims {summary['claims']} "
                           f"| claim amount RM{summary['claim_amount']:,.0f} "
                           f"| freq {summary['freq']:.2%} "
-                          f"-> {path.name} ({time.time() - started:.0f}s)")
+                          f"-> {policy_path.name}, {claims_path.name} "
+                          f"({time.time() - started:.0f}s)")
 
     return pd.DataFrame(rows)

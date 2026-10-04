@@ -1,0 +1,213 @@
+{
+ "n": 1000,
+ "cohort_year": 2026,
+ "n_years": 5,
+ "seed": 42,
+ "vehicle_ramp": {
+  "from": {
+   "ICE": 0.96,
+   "EV": 0.04
+  },
+  "to": {
+   "ICE": 0.62,
+   "EV": 0.38
+  }
+ },
+
+ "flood_event_prob": {
+  "Peninsular Malaysia": 0.25,
+  "East Malaysia (Sabah, Sawarak & Labuan)": 0.40
+ },
+
+ "severity_inflation": 0.06,
+
+ "entrant_growth": 0.05,
+
+ "sa_depreciation": 0.10,
+ "sa_min": 5000,
+
+ "coverage_ramp": {
+  "from": {
+   "Comprehensive": 0.65,
+   "TPFT": 0.20,
+   "TPO": 0.15
+  }
+ },
+ "region_pct": {
+  "Peninsular Malaysia": 0.80,
+  "East Malaysia (Sabah, Sawarak & Labuan)": 0.20
+ },
+ "generation_pct": {
+  "Young Adults": 0.40,
+  "Adults": 0.40,
+  "Mature Adults": 0.15,
+  "Seniors": 0.05
+ },
+ "age_bands": {
+  "Young Adults": [18, 28],
+  "Adults": [28, 46],
+  "Mature Adults": [46, 66],
+  "Seniors": [66, 76]
+ },
+ "gender_pct": {
+  "Male": 0.55,
+  "Female": 0.45
+ },
+ "car_age_median": {
+  "Young Adults": 2.0,
+  "Adults": 3.5,
+  "Mature Adults": 5.0,
+  "Seniors": 5.5
+ },
+ "car_age_sigma": 1.5,
+
+ "ncd_table": {"0": 0.0, "1": 0.25, "2": 0.30, "3": 0.3833, "4": 0.45, "5": 0.55},
+ "ncd_entry": {
+  "years": [0, 1, 2, 3, 4, 5],
+  "weights": [0.30, 0.22, 0.16, 0.13, 0.10, 0.09]
+ },
+
+ "engine_bands": [
+  "0 to 1,400 cc / EV up to 70 kW",
+  "1,401 to 1,650 cc / EV 71 - 100 kW",
+  "1,651 - 2,200 cc / EV 101 - 125 kW",
+  "2,201 - 3,050 cc / EV 126 - 150 kW",
+  "3,051 - 4,100 cc / EV 151 - 200 kW",
+  "4,101 - 4,250 cc / EV 201 - 250 kW",
+  "4,251 - 4,400 cc / EV 251 - 300 kW",
+  "Over 4,400 cc / EV > 300 kW"
+ ],
+ "engine_weights": [0.25, 0.20, 0.18, 0.15, 0.10, 0.07, 0.03, 0.02],
+ "entrant_frac": 0.13,
+
+ "sa_stats": {
+  "ICE": {"median": 30000, "spread": 0.5},
+  "EV": {"median": 70000, "spread": 0.5}
+ },
+
+ "claim_frequency_base": -2.35,
+ "frequency_intensity": 1.0,
+ "frequency": {
+  "young_adult": 0.40,
+  "senior": 0.26,
+  "young_male": 0.05,
+  "ev": 0.05,
+  "flood": 0.20,
+  "theft": 0.10,
+  "car_age_per_year": 0.03,
+  "ncd_per_year": -0.05,
+  "coverage_multiplier": {"Comprehensive": 1.00, "TPFT": 0.60, "TPO": 0.45}
+ },
+
+ "risk_flags": {
+  "flood": {
+   "Peninsular Malaysia": 0.40,
+   "East Malaysia (Sabah, Sawarak & Labuan)": 1.00
+  },
+  "theft": {
+   "Peninsular Malaysia": 0.60,
+   "East Malaysia (Sabah, Sawarak & Labuan)": 0.85
+  }
+ },
+
+ "aging": {
+  "young_max": 27,
+  "adult_max": 45,
+  "mature_max": 65,
+  "car_age_cap": 10
+ },
+
+ "severity": {
+  "perils": ["AD", "Windscreen", "Theft", "Fire", "TPPD", "TPBI"],
+  "specs": {
+   "TPBI": {
+    "shape": 0.35,
+    "scale": 70000,
+    "cap": null,
+    "payout": "partial",
+    "excess": 0
+   },
+   "TPPD": {
+    "shape": 0.55,
+    "scale": 9000,
+    "cap": 3000000,
+    "payout": "partial",
+    "excess": 0
+   },
+   "Windscreen": {
+    "shape": 2.00,
+    "scale": 700,
+    "cap": 15000,
+    "payout": "partial",
+    "excess": 0
+   },
+   "Theft": {
+    "shape": 1.10,
+    "scale": {
+     "sa_fraction": 0.20,
+     "min": 8000,
+     "max": 20000
+    },
+    "cap": "sum_assured",
+    "payout": "total",
+    "excess": 400
+   },
+   "Fire": {
+    "shape": 0.90,
+    "scale": 12000,
+    "cap": "sum_assured",
+    "payout": "mixed",
+    "total_loss_prob": 0.60,
+    "excess": 400
+   },
+   "AD": {"shape": 0.60, "scale": 5500,
+          "cap": "sum_assured",
+          "payout": "mixed", "total_loss_prob": 0.08, "excess": 400,
+          "young_excess": 1500}
+  }
+ },
+ "peril_dist": {
+  "Comprehensive": {
+   "AD": 0.54,
+   "Windscreen": 0.30,
+   "Theft": 0.008,
+   "Fire": 0.002,
+   "TPPD": 0.11,
+   "TPBI": 0.04
+  },
+  "TPO": {
+   "TPPD": 0.78,
+   "TPBI": 0.22
+  },
+  "TPFT": {
+    "TPPD": 0.80,
+    "TPBI": 0.15,
+    "Theft": 0.04,
+    "Fire": 0.01
+  }
+ },
+ "severity_multiplier": 1.00,
+
+ "telematics": {
+  "hard_braking": {"shape": 2.0, "scale": 1.8, "max": 15},
+  "speeding": {"shape": 2.0, "scale": 6.0, "max": 50},
+  "night_driving": {"a": 2, "b": 5, "scale": 40, "max": 50},
+  "weights": {"hard_braking": 0.45, "speeding": 0.40, "night_driving": 0.15},
+  "score_max": 100,
+  "score_min": 20,
+  "score_span": 80
+ },
+ "behavior_risk": {"lo": 0.90, "hi": 1.30},
+
+ "retention": {
+  "base": 0.82,
+  "claim_delta": -0.25,
+  "clean_delta": 0.05,
+  "ncd3_bonus": 0.15,
+  "ncd2_bonus": 0.08,
+  "telematics_high": {"threshold": 80, "bonus": 0.10, "span": 20},
+  "telematics_mid": {"threshold": 60, "bonus": 0.03},
+  "behavior_penalty": 0.05,
+  "clip": [0.10, 0.95]
+ }
+}

@@ -8,9 +8,11 @@ Examples:
   python run_scenarios.py --grid scenarios/frequency.json
   python run_scenarios.py --out my_results
 
-Output: results/<scenario>_s<seed>.csv — simulation data only (attributes +
-claims; never premium columns). The engine is premium-independent: same seed
-+ same cfg = identical CSV.
+Output: results/<scenario>_s<seed>.csv (policy-years) and
+results/<scenario>_s<seed>_claims.csv (one row per claim), plus a manifest
+with provenance. Simulation data only (attributes + claims; never premium
+columns). The engine is premium-independent: same seed + same cfg = identical
+CSV.
 """
 
 import argparse
